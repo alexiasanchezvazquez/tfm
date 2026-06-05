@@ -1,0 +1,108 @@
+## Replication Package for "When Debt Bites: Household Leverage and the Consumption Cost of Unemployment Shocks. Evidence from Spain" by Alexia Sánchez Vázquez (2026)
+
+Master Thesis, Master Degree in Economics, Universidad Carlos III de Madrid.
+Advisor: Julio Cáceres Delpiano.
+
+This folder contains the code and the instructions necessary to access the data and reproduce all the tables and figures of the thesis. The empirical design extends Sala and Trivín (2024) by introducing a direct unemployment shock, decomposing household debt into its illiquid and liquid components, and widening the sample to six overlapping triads spanning 2002–2022.
+
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+### Important Information Before Running the Code
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+
+This thesis uses multiple waves of the Spanish Survey of Household Finances (EFF). Although the EFF is a public database, the Bank of Spain requires each user to register before accessing the data and prohibits transferring the information to third parties. Therefore, this replication package only includes the code; it does not include the EFF microdata.
+
+To replicate the results, follow these steps to download and store the EFF data:
+
+1. **Register on the EFF Website**
+   Visit the Bank of Spain's EFF page: https://www.bde.es/wbe/en/estadisticas/temas/encuestas-hogares-individuos/
+
+2. **Follow the Bank's Instructions**
+   Complete the registration process and obtain access to the data.
+
+3. **Download the Relevant Files**
+   Once access is granted, download the files for every wave used in this thesis (2002, 2005, 2008, 2011, 2014, 2017, 2020, 2022) and place them in the folders "Data/EFF/XXXX", where XXXX is the year of the wave. For each wave you need:
+
+   - seccion6_XXXX_impN
+   - otras_secciones_XXXX_imp_N
+   - replicate_weights_XXXX
+
+   Here XXXX is the year and N ranges from 1 to 5, the five implicates of the multiply-imputed database. The bootstrap replicate weights (wt3r_1–wt3r_999) are used for inference throughout.
+
+   NOTE ON WAVE COVERAGE: because the instrumental-variables strategy instruments the pre-shock debt level in t-1 with its deeper lag in t-2, each estimate requires a household observed in three consecutive waves (a "triad"). The eight EFF waves above therefore generate six overlapping triads, labelled by their terminal year: 2002–2008, 2005–2011, 2008–2014, 2011–2017, 2014–2020, and 2017–2022.
+
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+### Structure of the Replication Folder
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+
+The replication folder is organized as follows:
+
+- **Master Do-File**
+  Master.do — Runs the full pipeline: builds the triads from the raw EFF waves, sets up the multiple-imputation and bootstrap structure, and generates every table and figure in the thesis.
+
+- **Data Folder**
+  Stores the raw EFF microdata (after the user downloads it, see above) and the analysis datasets derived from it. Subfolders:
+  - "EFF": the raw wave files, one subfolder per year.
+  - "Panels": the six constructed triad datasets used in estimation.
+
+- **Do Folder**
+  Individual do-files for each output, so specific tables or figures can be reproduced on their own. Subfolders:
+  - "Create main dataset":
+        - Panel_IIII_EEEE.do: builds the triad from initial year IIII to terminal year EEEE.
+        - Panel_IIII_EEEE_constrained.do: applies the sample restrictions (stable homeowners, stable demographic structure, top/bottom 1% of income and wealth trimmed).
+        - Panel_IIII_EEEE_mi_setup.do: constructs the key variables (the unemployment shock, the debt-to-income ratios and their illiquid/liquid decomposition, the lags used as instruments) and declares the multiple-imputation and replicate-weight structure.
+  - "Create wealth variables": auxiliary files that build the real wealth and debt aggregates, including the split of total debt into the illiquid (collateralized) and liquid (unsecured) components.
+
+  Although Master.do builds everything automatically, users who prefer to construct the datasets manually should run, for each triad, the three files above in this order: Panel → constrained → mi_setup.
+
+- **Tables Folder**
+  Stores the estimation output (.txt) feeding each LaTeX table. The main do-files are:
+        - Tabla_2.do                         -> Table 2.1, aggregate IV (2SLS) results across the six triads.
+        - Tabla_2_liquidez.do                -> Table 2.2, debt composition (illiquid endogenous, liquid exogenous control), baseline winsorization.
+        - Tabla_2_liquidez_v2.do             -> Table 3.1, robustness to intermediate winsorization (debt 1–97, changes 2.5–97.5).
+        - Tabla_2_liquidez_rob_w95.do        -> Table 3.2, robustness to aggressive winsorization (debt 1–95, changes 5–95).
+        - Tabla_2_liquidez_rob_dlogc.do      -> Table 3.3, alternative dependent variable, growth of real consumption (Dlog C).
+        - Tabla_2_triple_age.do              -> Triple-interaction stress test (Shock x Debt/Y x illiquid share).
+        - Table_1.do                         -> Appendix Table A.1, saturated OLS benchmark (stock vs flow debt channels).
+
+  IDENTIFICATION NOTE: in the composition specification the illiquid debt ratio and its interaction with the shock are the only endogenous regressors, instrumented with their t-2 lags; the liquid ratio and its interaction enter as exogenous controls. A correctly specified composition do-file therefore reports exactly two first-stage F-statistics (illiquid level and Shock x illiquid). Instrumenting the liquid component jointly is not supported by the data — its t-2 lag is a weak instrument — and is not part of the preferred design.
+
+- **Graphs Folder** ("Gráficos")
+  Stores all figures. The figure scripts are in R:
+        - GRAFICOS.R            -> Figure D.1 (marginal effect of the shock by leverage) and Figure D.2 (illiquid-share distribution and portfolio composition).
+        - DESCRIPTIVES.R        -> Appendix Table A.2, descriptive statistics by wave.
+        - COEFPLOT_SHOCK_DEBT.R -> Figure D.5, the conditional coefficient beta3 across triads, aggregate vs illiquid specifications.
+  Figures fig_consumo_tijera (D.3) and fig_iv_first_stage (D.4) are also produced here.
+  NOTE: because the IV point estimates rely on the multiple-imputation and bootstrap machinery, which is not reproduced inside R, the coefficient plot reads the estimated coefficients and confidence intervals directly from the Stata output tables.
+
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+### IMPORTANTLY: To generate all outcomes shown in the thesis:
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+
+1. Download the EFF files as instructed above.
+2. Open Master.do, set the project root path at the top of the file, and run it.
+
+The estimation routines use bootstrap replicate weights with 999 replications across five imputations, so a full run is computationally intensive and may take several hours.
+
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+### Software
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+
+- Stata (estimation, multiple imputation, bootstrap inference). Requires the user-written commands winsor2 and estout.
+
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+### Contact Information
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+
+For any questions, please contact sanchezzalexia@gmail.com. Replication repository: https://github.com/alexiasanchezvazquez/tfm
+
+---
