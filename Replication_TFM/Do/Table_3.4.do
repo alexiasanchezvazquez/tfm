@@ -1,0 +1,840 @@
+*****************************************************************************************************************************
+* TABLA - INTERACCION TRIPLE Shock x (Debt/Y) x share^ill  (ecuaciones 1.7-1.9)
+*
+*   Modela el efecto del nivel TOTAL de deuda sobre el consumo ante un shock,
+*   y deja que el share iliquido s^ill (ec. 1.9) MODULE ese efecto:
+*
+*   d(C/Y) = b1 Shock + b2 Debt/Y + b3 (Shock x Debt/Y)
+*            + b4 (Shock x Debt/Y x s^ill) + b5 s^ill + b6 d(W/Y) + gX + e
+*
+*   Parametro clave: b4 (termino triple). Mide cuanto MAS castiga el shock al
+*   consumo por unidad de deuda a medida que la deuda es mas iliquida (s^ill->1).
+*   Hipotesis WHtM: b4 < 0 (la deuda atada a activos iliquidos amplifica el
+*   castigo), especialmente en los regimenes de crisis.
+*
+*   Endogenos (instrumentados con sus equivalentes en t-2):
+*     l1_debty_w           <- l2_debty_w
+*     shock_l1debty        <- shock_l2debty           (Shock x Debt)
+*     shock_l1debty_sh     <- shock_l2debty_sh        (Shock x Debt x s^ill)
+*   Exogeno: l1_share_il (nivel del share, para no omitir su efecto directo).
+*
+*   Tres F-stats de primera etapa por panel (nivel, doble, triple).
+*   ADVERTENCIA: el termino triple es exigente con los instrumentos; revisar
+*   F_trp antes de interpretar b4 en cada panel.
+*
+*   Salida: $tables/Tab_triple_share.txt
+*****************************************************************************************************************************
+
+clear all
+set more off
+set varabbrev off
+set maxvar 10000
+
+*************************************************************************************************************************
+* PANEL 2002-2008
+*************************************************************************************************************************
+use "$path/Data/panel_2002_2008_constrained_mi.dta", clear
+drop interest_rate_type number_pending_loans pending_loans share_remaining_mortgage years_pending years_pending_weight debt_service_real interest_rate share_fixed_rate precautionary p2_5_real refin debt_service_fin_assets_real debt_service_real_assets_real spec_1 spec_3
+
+foreach base in real_debt fin_debt vdeuda riquezanet riquezabr mrenthog renthog nonfin_inc {
+    capture confirm variable `base'_real
+    if !_rc {
+        local v_`base' `base'_real
+    }
+    else {
+        local v_`base' `base'
+    }
+}
+local RD `v_real_debt'
+local FD `v_fin_debt'
+
+mi import flong, m(imputation) id(h_2008 year) imputed(liqcons risk edu_h_1 edu_m_1 job_h_1 income_dev income_expect durable members_working sector `v_mrenthog' `v_renthog' consumption_real actfinanc_real actreales_real `v_vdeuda' `RD' `FD' `v_nonfin_inc' `v_riquezabr' `v_riquezanet' constraints health_1 gen_constraints years_house shock) clear
+mi register regular(pareja gage gender ownership size kids employment contract)
+
+mi xtset h_2008 year, delta(3)
+mi svyset, bsrweight(wt3r_1-wt3r_999) vce(bootstrap)
+
+mi passive: g cy = consumption_real/`v_nonfin_inc'
+mi passive: g wy = `v_riquezanet'/`v_nonfin_inc'
+* ratio de deuda TOTAL sobre renta (Debt/Y)
+mi passive: g debty = `v_vdeuda'/`v_nonfin_inc'
+* share iliquido s^ill (ecuacion 1.9), definido si hay deuda
+mi passive: g share_il = `RD'/`v_vdeuda' if `v_vdeuda'>0 & `v_vdeuda'<.
+* si no hay deuda, share=0 (no hay componente iliquido que module)
+mi passive: replace share_il = 0 if (`v_vdeuda'<=0 | `v_vdeuda'>=.) 
+
+mi xeq: sort h_2008 year; g l1_size=l.size
+mi xeq: sort h_2008 year; g d_size=d.size
+mi xeq: sort h_2008 year; g l1_kids=l.kids
+mi xeq: sort h_2008 year; g d_members_working=d.members_working
+mi xeq: sort h_2008 year; g l1_members_working=l.members_working
+mi xeq: sort h_2008 year; g d_kids=d.kids
+mi xeq: sort h_2008 year; g l1_gage=l.gage
+mi xeq: sort h_2008 year; g l1_employment=l.employment
+mi xeq: sort h_2008 year; g l1_ownership=l.ownership
+mi xeq: sort h_2008 year; g l1_durable=l.durable
+mi xeq: sort h_2008 year; g l1_income_dev=l.income_dev
+mi xeq: sort h_2008 year; g l1_risk=l.risk
+mi xeq: sort h_2008 year; g l1_gen_constraints=l.gen_constraints
+mi xeq: sort h_2008 year; g l1_income_expect=l.income_expect
+mi xeq: sort h_2008 year; g l1_health_1=l.health_1
+mi xeq: sort h_2008 year; g d_health_1=d.health_1
+mi xeq: sort h_2008 year; g l1_edu_h_1=l.edu_h_1
+mi xeq: sort h_2008 year; g l1_edu_m_1=l.edu_m_1
+mi xeq: sort h_2008 year; g l1_job_h_1=l.job_h_1
+mi xeq: sort h_2008 year; g l1_gender=l.gender
+mi xeq: sort h_2008 year; g l1_pareja=l.pareja
+mi xeq: sort h_2008 year; g l1_sector=l.sector
+mi xeq: sort h_2008 year; g l1_contract=l.contract
+
+global baseline_controls d_size l1_size d_members_working l1_members_working d_kids l1_kids i.l1_gage i.l1_employment l1_health_1 d_health_1 l1_edu_h_1 l1_edu_m_1 l1_job_h_1 i.durable i.l1_durable l1_pareja l1_gender i.income_dev i.l1_income_dev i.risk i.l1_risk i.gen_constraints i.l1_gen_constraints i.income_expect i.l1_income_expect i.l1_contract i.l1_sector years_house
+
+mi xeq: sort h_2008 year; g dwy=d.wy
+mi xeq: sort h_2008 year; g dcy=d.cy
+* niveles t-1 y t-2 de deuda total y share
+mi xeq: sort h_2008 year; g l1_debty   =l.debty
+mi xeq: sort h_2008 year; g l2_debty   =l2.debty
+mi xeq: sort h_2008 year; g l1_share_il=l.share_il
+mi xeq: sort h_2008 year; g l2_share_il=l2.share_il
+
+forvalues i=1/5{
+forvalues j=2002(3)2008{
+capture xtile qui_wealth_`i'_`j'=`v_riquezanet' if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_wealth=.
+forvalues i=1/5{
+forvalues j=2002(3)2008{
+capture replace qui_wealth=qui_wealth_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+forvalues i=1/5{
+forvalues j=2002(3)2008{
+capture xtile qui_income_`i'_`j'=renthog_real if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_income=.
+forvalues i=1/5{
+forvalues j=2002(3)2008{
+capture replace qui_income=qui_income_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+mi xeq: sort h_2008 year; g l1_qui_wealth=l.qui_wealth
+mi xeq: sort h_2008 year; g l1_qui_income=l.qui_income
+
+winsor2 l1_debty l2_debty, cuts(0 99) by(imputation year)
+winsor2 dcy dwy , cuts(1 99) by(imputation year)
+
+* ----- construccion de los terminos endogenos e instrumentos -----
+* (a) nivel de deuda total: endogeno l1_debty_w, instrumento l2_debty_w
+* (b) Shock x Debt: endogeno; instrumento Shock x Debt_{t-2}
+mi passive: g shock_l1debty = shock * l1_debty_w
+mi passive: g shock_l2debty = shock * l2_debty_w
+* (c) TRIPLE Shock x Debt x share^ill: endogeno; instrumento con share y debt en t-2
+mi passive: g shock_l1debty_sh = shock * l1_debty_w * l1_share_il
+mi passive: g shock_l2debty_sh = shock * l2_debty_w * l2_share_il
+* control: share iliquido rezagado en niveles (exogeno, para no omitir su efecto directo)
+* (l1_share_il ya creado)
+
+* instrumentos (3): nivel, interaccion doble, interaccion triple
+local Z l2_debty_w shock_l2debty shock_l2debty_sh
+
+sort h_2008 year
+* primeras etapas (una por endogeno)
+mi estimate, cmdok vceok esampvaryok post: svy: reg l1_debty_w dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2008 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_lvl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2008 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_dbl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty_sh dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2008 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_trp = r(F)
+
+* IV: nivel, doble y triple endogenos; share^ill nivel como control exogeno
+mi estimate, cmdok vceok esampvaryok post: svy: ivregress 2sls dcy_w dwy_w shock l1_share_il ///
+   $baseline_controls i.l1_qui_wealth i.l1_qui_income ///
+   (l1_debty_w shock_l1debty shock_l1debty_sh = l2_debty_w shock_l2debty shock_l2debty_sh) ///
+   if year==2008 & ownership==2 & l1_ownership==2
+estimate store m_2008
+estadd scalar F_lvl
+estadd scalar F_dbl
+estadd scalar F_trp
+
+*************************************************************************************************************************
+* PANEL 2005-2011
+*************************************************************************************************************************
+use "$path/Data/panel_2005_2011_constrained_mi.dta", clear
+drop interest_rate_type number_pending_loans pending_loans share_remaining_mortgage years_pending years_pending_weight interest_rate share_fixed_rate debt_service_fin_assets_real debt_service_real_assets_real precautionary debt_service_real refin spec_1 spec_3 p2_5_real spec_2
+
+foreach base in real_debt fin_debt vdeuda riquezanet riquezabr mrenthog renthog nonfin_inc {
+    capture confirm variable `base'_real
+    if !_rc {
+        local v_`base' `base'_real
+    }
+    else {
+        local v_`base' `base'
+    }
+}
+local RD `v_real_debt'
+local FD `v_fin_debt'
+
+mi import flong, m(imputation) id(h_2011 year) imputed(liqcons risk edu_h_1 edu_m_1 job_h_1 income_dev income_expect durable members_working sector `v_mrenthog' `v_renthog' consumption_real actfinanc_real actreales_real `v_vdeuda' `RD' `FD' `v_nonfin_inc' `v_riquezabr' `v_riquezanet' constraints gen_constraints years_house shock) clear
+mi register regular(pareja gage gender ownership size kids employment health_1 contract)
+
+mi xtset h_2011 year, delta(3)
+mi svyset, bsrweight(wt3r_1-wt3r_999) vce(bootstrap)
+
+mi passive: g cy = consumption_real/`v_nonfin_inc'
+mi passive: g wy = `v_riquezanet'/`v_nonfin_inc'
+* ratio de deuda TOTAL sobre renta (Debt/Y)
+mi passive: g debty = `v_vdeuda'/`v_nonfin_inc'
+* share iliquido s^ill (ecuacion 1.9), definido si hay deuda
+mi passive: g share_il = `RD'/`v_vdeuda' if `v_vdeuda'>0 & `v_vdeuda'<.
+* si no hay deuda, share=0 (no hay componente iliquido que module)
+mi passive: replace share_il = 0 if (`v_vdeuda'<=0 | `v_vdeuda'>=.) 
+
+mi xeq: sort h_2011 year; g l1_size=l.size
+mi xeq: sort h_2011 year; g d_size=d.size
+mi xeq: sort h_2011 year; g l1_kids=l.kids
+mi xeq: sort h_2011 year; g d_members_working=d.members_working
+mi xeq: sort h_2011 year; g l1_members_working=l.members_working
+mi xeq: sort h_2011 year; g d_kids=d.kids
+mi xeq: sort h_2011 year; g l1_gage=l.gage
+mi xeq: sort h_2011 year; g l1_employment=l.employment
+mi xeq: sort h_2011 year; g l1_ownership=l.ownership
+mi xeq: sort h_2011 year; g l1_durable=l.durable
+mi xeq: sort h_2011 year; g l1_income_dev=l.income_dev
+mi xeq: sort h_2011 year; g l1_risk=l.risk
+mi xeq: sort h_2011 year; g l1_gen_constraints=l.gen_constraints
+mi xeq: sort h_2011 year; g l1_income_expect=l.income_expect
+mi xeq: sort h_2011 year; g l1_health_1=l.health_1
+mi xeq: sort h_2011 year; g d_health_1=d.health_1
+mi xeq: sort h_2011 year; g l1_edu_h_1=l.edu_h_1
+mi xeq: sort h_2011 year; g l1_edu_m_1=l.edu_m_1
+mi xeq: sort h_2011 year; g l1_job_h_1=l.job_h_1
+mi xeq: sort h_2011 year; g l1_gender=l.gender
+mi xeq: sort h_2011 year; g l1_pareja=l.pareja
+mi xeq: sort h_2011 year; g l1_sector=l.sector
+mi xeq: sort h_2011 year; g l1_contract=l.contract
+
+global baseline_controls d_size l1_size d_members_working l1_members_working d_kids l1_kids i.l1_gage i.l1_employment l1_health_1 d_health_1 l1_edu_h_1 l1_edu_m_1 l1_job_h_1 i.durable i.l1_durable l1_pareja l1_gender i.income_dev i.l1_income_dev i.risk i.l1_risk i.gen_constraints i.l1_gen_constraints i.income_expect i.l1_income_expect i.l1_contract i.l1_sector years_house
+
+mi xeq: sort h_2011 year; g dwy=d.wy
+mi xeq: sort h_2011 year; g dcy=d.cy
+* niveles t-1 y t-2 de deuda total y share
+mi xeq: sort h_2011 year; g l1_debty   =l.debty
+mi xeq: sort h_2011 year; g l2_debty   =l2.debty
+mi xeq: sort h_2011 year; g l1_share_il=l.share_il
+mi xeq: sort h_2011 year; g l2_share_il=l2.share_il
+
+forvalues i=1/5{
+forvalues j=2005(3)2011{
+capture xtile qui_wealth_`i'_`j'=`v_riquezanet' if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_wealth=.
+forvalues i=1/5{
+forvalues j=2005(3)2011{
+capture replace qui_wealth=qui_wealth_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+forvalues i=1/5{
+forvalues j=2005(3)2011{
+capture xtile qui_income_`i'_`j'=renthog_real if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_income=.
+forvalues i=1/5{
+forvalues j=2005(3)2011{
+capture replace qui_income=qui_income_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+mi xeq: sort h_2011 year; g l1_qui_wealth=l.qui_wealth
+mi xeq: sort h_2011 year; g l1_qui_income=l.qui_income
+
+winsor2 l1_debty l2_debty, cuts(0 99) by(imputation year)
+winsor2 dcy dwy , cuts(1 99) by(imputation year)
+
+* ----- construccion de los terminos endogenos e instrumentos -----
+* (a) nivel de deuda total: endogeno l1_debty_w, instrumento l2_debty_w
+* (b) Shock x Debt: endogeno; instrumento Shock x Debt_{t-2}
+mi passive: g shock_l1debty = shock * l1_debty_w
+mi passive: g shock_l2debty = shock * l2_debty_w
+* (c) TRIPLE Shock x Debt x share^ill: endogeno; instrumento con share y debt en t-2
+mi passive: g shock_l1debty_sh = shock * l1_debty_w * l1_share_il
+mi passive: g shock_l2debty_sh = shock * l2_debty_w * l2_share_il
+* control: share iliquido rezagado en niveles (exogeno, para no omitir su efecto directo)
+* (l1_share_il ya creado)
+
+* instrumentos (3): nivel, interaccion doble, interaccion triple
+local Z l2_debty_w shock_l2debty shock_l2debty_sh
+
+sort h_2011 year
+* primeras etapas (una por endogeno)
+mi estimate, cmdok vceok esampvaryok post: svy: reg l1_debty_w dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2011 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_lvl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2011 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_dbl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty_sh dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2011 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_trp = r(F)
+
+* IV: nivel, doble y triple endogenos; share^ill nivel como control exogeno
+mi estimate, cmdok vceok esampvaryok post: svy: ivregress 2sls dcy_w dwy_w shock l1_share_il ///
+   $baseline_controls i.l1_qui_wealth i.l1_qui_income ///
+   (l1_debty_w shock_l1debty shock_l1debty_sh = l2_debty_w shock_l2debty shock_l2debty_sh) ///
+   if year==2011 & ownership==2 & l1_ownership==2
+estimate store m_2011
+estadd scalar F_lvl
+estadd scalar F_dbl
+estadd scalar F_trp
+
+*************************************************************************************************************************
+* PANEL 2008-2014
+*************************************************************************************************************************
+use "$path/Data/panel_2008_2014_constrained_mi.dta", clear
+drop interest_rate_type number_pending_loans pending_loans share_remaining_mortgage years_pending years_pending_weight debt_service_real interest_rate share_fixed_rate precautionary p2_5_real spec_1 spec_2 spec_3 debt_service_fin_assets_real debt_service_real_assets_real
+
+foreach base in real_debt fin_debt vdeuda riquezanet riquezabr mrenthog renthog nonfin_inc {
+    capture confirm variable `base'_real
+    if !_rc {
+        local v_`base' `base'_real
+    }
+    else {
+        local v_`base' `base'
+    }
+}
+local RD `v_real_debt'
+local FD `v_fin_debt'
+
+mi import flong, m(imputation) id(h_2014 year) imputed(liqcons risk edu_h_1 edu_m_1 job_h_1 income_dev income_expect durable sector `v_mrenthog' `v_renthog' consumption_real actfinanc_real actreales_real `v_vdeuda' `RD' `FD' `v_nonfin_inc' `v_riquezabr' `v_riquezanet' constraints gen_constraints years_house shock) clear
+mi register regular(pareja gage gender ownership size kids employment health_1 contract members_working)
+
+mi xtset h_2014 year, delta(3)
+mi svyset, bsrweight(wt3r_1-wt3r_999) vce(bootstrap)
+
+mi passive: g cy = consumption_real/`v_nonfin_inc'
+mi passive: g wy = `v_riquezanet'/`v_nonfin_inc'
+* ratio de deuda TOTAL sobre renta (Debt/Y)
+mi passive: g debty = `v_vdeuda'/`v_nonfin_inc'
+* share iliquido s^ill (ecuacion 1.9), definido si hay deuda
+mi passive: g share_il = `RD'/`v_vdeuda' if `v_vdeuda'>0 & `v_vdeuda'<.
+* si no hay deuda, share=0 (no hay componente iliquido que module)
+mi passive: replace share_il = 0 if (`v_vdeuda'<=0 | `v_vdeuda'>=.) 
+
+mi xeq: sort h_2014 year; g l1_size=l.size
+mi xeq: sort h_2014 year; g d_size=d.size
+mi xeq: sort h_2014 year; g l1_kids=l.kids
+mi xeq: sort h_2014 year; g d_members_working=d.members_working
+mi xeq: sort h_2014 year; g l1_members_working=l.members_working
+mi xeq: sort h_2014 year; g d_kids=d.kids
+mi xeq: sort h_2014 year; g l1_gage=l.gage
+mi xeq: sort h_2014 year; g l1_employment=l.employment
+mi xeq: sort h_2014 year; g l1_ownership=l.ownership
+mi xeq: sort h_2014 year; g l1_durable=l.durable
+mi xeq: sort h_2014 year; g l1_income_dev=l.income_dev
+mi xeq: sort h_2014 year; g l1_risk=l.risk
+mi xeq: sort h_2014 year; g l1_gen_constraints=l.gen_constraints
+mi xeq: sort h_2014 year; g l1_income_expect=l.income_expect
+mi xeq: sort h_2014 year; g l1_health_1=l.health_1
+mi xeq: sort h_2014 year; g d_health_1=d.health_1
+mi xeq: sort h_2014 year; g l1_edu_h_1=l.edu_h_1
+mi xeq: sort h_2014 year; g l1_edu_m_1=l.edu_m_1
+mi xeq: sort h_2014 year; g l1_job_h_1=l.job_h_1
+mi xeq: sort h_2014 year; g l1_gender=l.gender
+mi xeq: sort h_2014 year; g l1_pareja=l.pareja
+mi xeq: sort h_2014 year; g l1_sector=l.sector
+mi xeq: sort h_2014 year; g l1_contract=l.contract
+
+global baseline_controls d_size l1_size d_members_working l1_members_working d_kids l1_kids i.l1_gage i.l1_employment l1_health_1 d_health_1 l1_edu_h_1 l1_edu_m_1 l1_job_h_1 i.durable i.l1_durable l1_pareja l1_gender i.income_dev i.l1_income_dev i.risk i.l1_risk i.gen_constraints i.l1_gen_constraints i.income_expect i.l1_income_expect i.l1_contract i.l1_sector years_house
+
+mi xeq: sort h_2014 year; g dwy=d.wy
+mi xeq: sort h_2014 year; g dcy=d.cy
+* niveles t-1 y t-2 de deuda total y share
+mi xeq: sort h_2014 year; g l1_debty   =l.debty
+mi xeq: sort h_2014 year; g l2_debty   =l2.debty
+mi xeq: sort h_2014 year; g l1_share_il=l.share_il
+mi xeq: sort h_2014 year; g l2_share_il=l2.share_il
+
+forvalues i=1/5{
+forvalues j=2008(3)2014{
+capture xtile qui_wealth_`i'_`j'=`v_riquezanet' if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_wealth=.
+forvalues i=1/5{
+forvalues j=2008(3)2014{
+capture replace qui_wealth=qui_wealth_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+forvalues i=1/5{
+forvalues j=2008(3)2014{
+capture xtile qui_income_`i'_`j'=renthog_real if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_income=.
+forvalues i=1/5{
+forvalues j=2008(3)2014{
+capture replace qui_income=qui_income_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+mi xeq: sort h_2014 year; g l1_qui_wealth=l.qui_wealth
+mi xeq: sort h_2014 year; g l1_qui_income=l.qui_income
+
+winsor2 l1_debty l2_debty, cuts(0 99) by(imputation year)
+winsor2 dcy dwy , cuts(1 99) by(imputation year)
+
+* ----- construccion de los terminos endogenos e instrumentos -----
+* (a) nivel de deuda total: endogeno l1_debty_w, instrumento l2_debty_w
+* (b) Shock x Debt: endogeno; instrumento Shock x Debt_{t-2}
+mi passive: g shock_l1debty = shock * l1_debty_w
+mi passive: g shock_l2debty = shock * l2_debty_w
+* (c) TRIPLE Shock x Debt x share^ill: endogeno; instrumento con share y debt en t-2
+mi passive: g shock_l1debty_sh = shock * l1_debty_w * l1_share_il
+mi passive: g shock_l2debty_sh = shock * l2_debty_w * l2_share_il
+* control: share iliquido rezagado en niveles (exogeno, para no omitir su efecto directo)
+* (l1_share_il ya creado)
+
+* instrumentos (3): nivel, interaccion doble, interaccion triple
+local Z l2_debty_w shock_l2debty shock_l2debty_sh
+
+sort h_2014 year
+* primeras etapas (una por endogeno)
+mi estimate, cmdok vceok esampvaryok post: svy: reg l1_debty_w dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2014 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_lvl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2014 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_dbl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty_sh dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2014 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_trp = r(F)
+
+* IV: nivel, doble y triple endogenos; share^ill nivel como control exogeno
+mi estimate, cmdok vceok esampvaryok post: svy: ivregress 2sls dcy_w dwy_w shock l1_share_il ///
+   $baseline_controls i.l1_qui_wealth i.l1_qui_income ///
+   (l1_debty_w shock_l1debty shock_l1debty_sh = l2_debty_w shock_l2debty shock_l2debty_sh) ///
+   if year==2014 & ownership==2 & l1_ownership==2
+estimate store m_2014
+estadd scalar F_lvl
+estadd scalar F_dbl
+estadd scalar F_trp
+
+*************************************************************************************************************************
+* PANEL 2011-2017
+*************************************************************************************************************************
+use "$path/Data/panel_2011_2017_constrained_mi.dta", clear
+drop interest_rate_type number_pending_loans pending_loans share_remaining_mortgage years_pending years_pending_weight debt_service_real interest_rate share_fixed_rate precautionary p2_5_real debt_service_fin_assets_real debt_service_real_assets_real spec_1 spec_3
+
+foreach base in real_debt fin_debt vdeuda riquezanet riquezabr mrenthog renthog nonfin_inc {
+    capture confirm variable `base'_real
+    if !_rc {
+        local v_`base' `base'_real
+    }
+    else {
+        local v_`base' `base'
+    }
+}
+local RD `v_real_debt'
+local FD `v_fin_debt'
+
+mi import flong, m(imputation) id(h_2017 year) imputed(liqcons risk job_h_1 income_dev income_expect durable sector `v_mrenthog' `v_renthog' consumption_real actfinanc_real actreales_real `v_vdeuda' `RD' `FD' `v_nonfin_inc' `v_riquezabr' `v_riquezanet' constraints gen_constraints years_house contract shock) clear
+mi register regular(pareja gage gender ownership size kids employment health_1 members_working edu_h_1 edu_m_1 )
+
+mi xtset h_2017 year, delta(3)
+mi svyset, bsrweight(wt3r_1-wt3r_999) vce(bootstrap)
+
+mi passive: g cy = consumption_real/`v_nonfin_inc'
+mi passive: g wy = `v_riquezanet'/`v_nonfin_inc'
+* ratio de deuda TOTAL sobre renta (Debt/Y)
+mi passive: g debty = `v_vdeuda'/`v_nonfin_inc'
+* share iliquido s^ill (ecuacion 1.9), definido si hay deuda
+mi passive: g share_il = `RD'/`v_vdeuda' if `v_vdeuda'>0 & `v_vdeuda'<.
+* si no hay deuda, share=0 (no hay componente iliquido que module)
+mi passive: replace share_il = 0 if (`v_vdeuda'<=0 | `v_vdeuda'>=.) 
+
+mi xeq: sort h_2017 year; g l1_size=l.size
+mi xeq: sort h_2017 year; g d_size=d.size
+mi xeq: sort h_2017 year; g l1_kids=l.kids
+mi xeq: sort h_2017 year; g d_members_working=d.members_working
+mi xeq: sort h_2017 year; g l1_members_working=l.members_working
+mi xeq: sort h_2017 year; g d_kids=d.kids
+mi xeq: sort h_2017 year; g l1_gage=l.gage
+mi xeq: sort h_2017 year; g l1_employment=l.employment
+mi xeq: sort h_2017 year; g l1_ownership=l.ownership
+mi xeq: sort h_2017 year; g l1_durable=l.durable
+mi xeq: sort h_2017 year; g l1_income_dev=l.income_dev
+mi xeq: sort h_2017 year; g l1_risk=l.risk
+mi xeq: sort h_2017 year; g l1_gen_constraints=l.gen_constraints
+mi xeq: sort h_2017 year; g l1_income_expect=l.income_expect
+mi xeq: sort h_2017 year; g l1_health_1=l.health_1
+mi xeq: sort h_2017 year; g d_health_1=d.health_1
+mi xeq: sort h_2017 year; g l1_edu_h_1=l.edu_h_1
+mi xeq: sort h_2017 year; g l1_edu_m_1=l.edu_m_1
+mi xeq: sort h_2017 year; g l1_job_h_1=l.job_h_1
+mi xeq: sort h_2017 year; g l1_gender=l.gender
+mi xeq: sort h_2017 year; g l1_pareja=l.pareja
+mi xeq: sort h_2017 year; g l1_sector=l.sector
+mi xeq: sort h_2017 year; g l1_contract=l.contract
+
+global baseline_controls d_size l1_size d_members_working l1_members_working d_kids l1_kids i.l1_gage i.l1_employment l1_health_1 d_health_1 l1_edu_h_1 l1_edu_m_1 l1_job_h_1 i.durable i.l1_durable l1_pareja l1_gender i.income_dev i.l1_income_dev i.risk i.l1_risk i.gen_constraints i.l1_gen_constraints i.income_expect i.l1_income_expect i.l1_contract i.l1_sector years_house
+
+mi xeq: sort h_2017 year; g dwy=d.wy
+mi xeq: sort h_2017 year; g dcy=d.cy
+* niveles t-1 y t-2 de deuda total y share
+mi xeq: sort h_2017 year; g l1_debty   =l.debty
+mi xeq: sort h_2017 year; g l2_debty   =l2.debty
+mi xeq: sort h_2017 year; g l1_share_il=l.share_il
+mi xeq: sort h_2017 year; g l2_share_il=l2.share_il
+
+forvalues i=1/5{
+forvalues j=2011(3)2017{
+capture xtile qui_wealth_`i'_`j'=`v_riquezanet' if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_wealth=.
+forvalues i=1/5{
+forvalues j=2011(3)2017{
+capture replace qui_wealth=qui_wealth_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+forvalues i=1/5{
+forvalues j=2011(3)2017{
+capture xtile qui_income_`i'_`j'=renthog_real if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_income=.
+forvalues i=1/5{
+forvalues j=2011(3)2017{
+capture replace qui_income=qui_income_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+mi xeq: sort h_2017 year; g l1_qui_wealth=l.qui_wealth
+mi xeq: sort h_2017 year; g l1_qui_income=l.qui_income
+
+winsor2 l1_debty l2_debty, cuts(0 99) by(imputation year)
+winsor2 dcy dwy , cuts(1 99) by(imputation year)
+
+* ----- construccion de los terminos endogenos e instrumentos -----
+* (a) nivel de deuda total: endogeno l1_debty_w, instrumento l2_debty_w
+* (b) Shock x Debt: endogeno; instrumento Shock x Debt_{t-2}
+mi passive: g shock_l1debty = shock * l1_debty_w
+mi passive: g shock_l2debty = shock * l2_debty_w
+* (c) TRIPLE Shock x Debt x share^ill: endogeno; instrumento con share y debt en t-2
+mi passive: g shock_l1debty_sh = shock * l1_debty_w * l1_share_il
+mi passive: g shock_l2debty_sh = shock * l2_debty_w * l2_share_il
+* control: share iliquido rezagado en niveles (exogeno, para no omitir su efecto directo)
+* (l1_share_il ya creado)
+
+* instrumentos (3): nivel, interaccion doble, interaccion triple
+local Z l2_debty_w shock_l2debty shock_l2debty_sh
+
+sort h_2017 year
+* primeras etapas (una por endogeno)
+mi estimate, cmdok vceok esampvaryok post: svy: reg l1_debty_w dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2017 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_lvl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2017 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_dbl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty_sh dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2017 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_trp = r(F)
+
+* IV: nivel, doble y triple endogenos; share^ill nivel como control exogeno
+mi estimate, cmdok vceok esampvaryok post: svy: ivregress 2sls dcy_w dwy_w shock l1_share_il ///
+   $baseline_controls i.l1_qui_wealth i.l1_qui_income ///
+   (l1_debty_w shock_l1debty shock_l1debty_sh = l2_debty_w shock_l2debty shock_l2debty_sh) ///
+   if year==2017 & ownership==2 & l1_ownership==2
+estimate store m_2017
+estadd scalar F_lvl
+estadd scalar F_dbl
+estadd scalar F_trp
+
+*************************************************************************************************************************
+* PANEL 2014-2020
+*************************************************************************************************************************
+use "$path/Data/panel_2014_2020_constrained_mi.dta", clear
+drop interest_rate_type number_pending_loans pending_loans share_remaining_mortgage years_pending years_pending_weight debt_service_real interest_rate share_fixed_rate precautionary p2_5_real debt_service_fin_assets_real debt_service_real_assets_real spec_1 spec_3
+
+foreach base in real_debt fin_debt vdeuda riquezanet riquezabr mrenthog renthog nonfin_inc {
+    capture confirm variable `base'_real
+    if !_rc {
+        local v_`base' `base'_real
+    }
+    else {
+        local v_`base' `base'
+    }
+}
+local RD `v_real_debt'
+local FD `v_fin_debt'
+
+mi import flong, m(imputation) id(h_2020 year) imputed(liqcons risk job_h_1 income_dev income_expect durable sector `v_mrenthog' `v_renthog' consumption_real actfinanc_real actreales_real `v_vdeuda' `RD' `FD' `v_nonfin_inc' `v_riquezabr' `v_riquezanet' constraints gen_constraints years_house contract shock) clear
+mi register regular(pareja gage gender ownership size kids employment health_1 members_working edu_h_1 edu_m_1 )
+
+mi xtset h_2020 year, delta(3)
+mi svyset, bsrweight(wt3r_1-wt3r_999) vce(bootstrap)
+
+mi passive: g cy = consumption_real/`v_nonfin_inc'
+mi passive: g wy = `v_riquezanet'/`v_nonfin_inc'
+* ratio de deuda TOTAL sobre renta (Debt/Y)
+mi passive: g debty = `v_vdeuda'/`v_nonfin_inc'
+* share iliquido s^ill (ecuacion 1.9), definido si hay deuda
+mi passive: g share_il = `RD'/`v_vdeuda' if `v_vdeuda'>0 & `v_vdeuda'<.
+* si no hay deuda, share=0 (no hay componente iliquido que module)
+mi passive: replace share_il = 0 if (`v_vdeuda'<=0 | `v_vdeuda'>=.) 
+
+mi xeq: sort h_2020 year; g l1_size=l.size
+mi xeq: sort h_2020 year; g d_size=d.size
+mi xeq: sort h_2020 year; g l1_kids=l.kids
+mi xeq: sort h_2020 year; g d_members_working=d.members_working
+mi xeq: sort h_2020 year; g l1_members_working=l.members_working
+mi xeq: sort h_2020 year; g d_kids=d.kids
+mi xeq: sort h_2020 year; g l1_gage=l.gage
+mi xeq: sort h_2020 year; g l1_employment=l.employment
+mi xeq: sort h_2020 year; g l1_ownership=l.ownership
+mi xeq: sort h_2020 year; g l1_durable=l.durable
+mi xeq: sort h_2020 year; g l1_income_dev=l.income_dev
+mi xeq: sort h_2020 year; g l1_risk=l.risk
+mi xeq: sort h_2020 year; g l1_gen_constraints=l.gen_constraints
+mi xeq: sort h_2020 year; g l1_income_expect=l.income_expect
+mi xeq: sort h_2020 year; g l1_health_1=l.health_1
+mi xeq: sort h_2020 year; g d_health_1=d.health_1
+mi xeq: sort h_2020 year; g l1_edu_h_1=l.edu_h_1
+mi xeq: sort h_2020 year; g l1_edu_m_1=l.edu_m_1
+mi xeq: sort h_2020 year; g l1_job_h_1=l.job_h_1
+mi xeq: sort h_2020 year; g l1_gender=l.gender
+mi xeq: sort h_2020 year; g l1_pareja=l.pareja
+mi xeq: sort h_2020 year; g l1_sector=l.sector
+mi xeq: sort h_2020 year; g l1_contract=l.contract
+
+global baseline_controls d_size l1_size d_members_working l1_members_working d_kids l1_kids i.l1_gage i.l1_employment l1_health_1 d_health_1 l1_edu_h_1 l1_edu_m_1 l1_job_h_1 i.durable i.l1_durable l1_pareja l1_gender i.income_dev i.l1_income_dev i.risk i.l1_risk i.gen_constraints i.l1_gen_constraints i.income_expect i.l1_income_expect i.l1_contract i.l1_sector years_house
+
+mi xeq: sort h_2020 year; g dwy=d.wy
+mi xeq: sort h_2020 year; g dcy=d.cy
+* niveles t-1 y t-2 de deuda total y share
+mi xeq: sort h_2020 year; g l1_debty   =l.debty
+mi xeq: sort h_2020 year; g l2_debty   =l2.debty
+mi xeq: sort h_2020 year; g l1_share_il=l.share_il
+mi xeq: sort h_2020 year; g l2_share_il=l2.share_il
+
+forvalues i=1/5{
+forvalues j=2014(3)2020{
+capture xtile qui_wealth_`i'_`j'=`v_riquezanet' if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_wealth=.
+forvalues i=1/5{
+forvalues j=2014(3)2020{
+capture replace qui_wealth=qui_wealth_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+forvalues i=1/5{
+forvalues j=2014(3)2020{
+capture xtile qui_income_`i'_`j'=renthog_real if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_income=.
+forvalues i=1/5{
+forvalues j=2014(3)2020{
+capture replace qui_income=qui_income_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+mi xeq: sort h_2020 year; g l1_qui_wealth=l.qui_wealth
+mi xeq: sort h_2020 year; g l1_qui_income=l.qui_income
+
+winsor2 l1_debty l2_debty, cuts(0 99) by(imputation year)
+winsor2 dcy dwy , cuts(1 99) by(imputation year)
+
+* ----- construccion de los terminos endogenos e instrumentos -----
+* (a) nivel de deuda total: endogeno l1_debty_w, instrumento l2_debty_w
+* (b) Shock x Debt: endogeno; instrumento Shock x Debt_{t-2}
+mi passive: g shock_l1debty = shock * l1_debty_w
+mi passive: g shock_l2debty = shock * l2_debty_w
+* (c) TRIPLE Shock x Debt x share^ill: endogeno; instrumento con share y debt en t-2
+mi passive: g shock_l1debty_sh = shock * l1_debty_w * l1_share_il
+mi passive: g shock_l2debty_sh = shock * l2_debty_w * l2_share_il
+* control: share iliquido rezagado en niveles (exogeno, para no omitir su efecto directo)
+* (l1_share_il ya creado)
+
+* instrumentos (3): nivel, interaccion doble, interaccion triple
+local Z l2_debty_w shock_l2debty shock_l2debty_sh
+
+sort h_2020 year
+* primeras etapas (una por endogeno)
+mi estimate, cmdok vceok esampvaryok post: svy: reg l1_debty_w dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2020 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_lvl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2020 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_dbl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty_sh dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2020 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_trp = r(F)
+
+* IV: nivel, doble y triple endogenos; share^ill nivel como control exogeno
+mi estimate, cmdok vceok esampvaryok post: svy: ivregress 2sls dcy_w dwy_w shock l1_share_il ///
+   $baseline_controls i.l1_qui_wealth i.l1_qui_income ///
+   (l1_debty_w shock_l1debty shock_l1debty_sh = l2_debty_w shock_l2debty shock_l2debty_sh) ///
+   if year==2020 & ownership==2 & l1_ownership==2
+estimate store m_2020
+estadd scalar F_lvl
+estadd scalar F_dbl
+estadd scalar F_trp
+
+*************************************************************************************************************************
+* PANEL 2017-2022  (irregular)
+*************************************************************************************************************************
+use "$path/Data/panel_2017_2022_constrained_mi.dta", clear
+drop interest_rate_type number_pending_loans pending_loans share_remaining_mortgage years_pending years_pending_weight debt_service_real interest_rate share_fixed_rate precautionary p2_5_real debt_service_fin_assets_real debt_service_real_assets_real spec_1 spec_3
+
+foreach base in real_debt fin_debt vdeuda riquezanet riquezabr mrenthog renthog nonfin_inc {
+    capture confirm variable `base'_real
+    if !_rc {
+        local v_`base' `base'_real
+    }
+    else {
+        local v_`base' `base'
+    }
+}
+local RD `v_real_debt'
+local FD `v_fin_debt'
+
+g wave = 1 if year==2017
+replace wave = 2 if year==2020
+replace wave = 3 if year==2022
+
+mi import flong, m(imputation) id(h_2022 year) imputed(liqcons risk job_h_1 income_dev income_expect durable sector `v_mrenthog' `v_renthog' consumption_real actfinanc_real actreales_real `v_vdeuda' `RD' `FD' `v_nonfin_inc' `v_riquezabr' `v_riquezanet' constraints gen_constraints years_house contract shock) clear
+mi register regular(pareja gage gender ownership size kids employment health_1 members_working edu_h_1 edu_m_1 wave)
+
+mi xtset h_2022 wave
+mi svyset, bsrweight(wt3r_1-wt3r_999) vce(bootstrap)
+
+mi passive: g cy = consumption_real/`v_nonfin_inc'
+mi passive: g wy = `v_riquezanet'/`v_nonfin_inc'
+* ratio de deuda TOTAL sobre renta (Debt/Y)
+mi passive: g debty = `v_vdeuda'/`v_nonfin_inc'
+* share iliquido s^ill (ecuacion 1.9), definido si hay deuda
+mi passive: g share_il = `RD'/`v_vdeuda' if `v_vdeuda'>0 & `v_vdeuda'<.
+* si no hay deuda, share=0 (no hay componente iliquido que module)
+mi passive: replace share_il = 0 if (`v_vdeuda'<=0 | `v_vdeuda'>=.) 
+
+mi xeq: sort h_2022 wave; g l1_size=l.size
+mi xeq: sort h_2022 wave; g d_size=d.size
+mi xeq: sort h_2022 wave; g l1_kids=l.kids
+mi xeq: sort h_2022 wave; g d_members_working=d.members_working
+mi xeq: sort h_2022 wave; g l1_members_working=l.members_working
+mi xeq: sort h_2022 wave; g d_kids=d.kids
+mi xeq: sort h_2022 wave; g l1_gage=l.gage
+mi xeq: sort h_2022 wave; g l1_employment=l.employment
+mi xeq: sort h_2022 wave; g l1_ownership=l.ownership
+mi xeq: sort h_2022 wave; g l1_durable=l.durable
+mi xeq: sort h_2022 wave; g l1_income_dev=l.income_dev
+mi xeq: sort h_2022 wave; g l1_risk=l.risk
+mi xeq: sort h_2022 wave; g l1_gen_constraints=l.gen_constraints
+mi xeq: sort h_2022 wave; g l1_income_expect=l.income_expect
+mi xeq: sort h_2022 wave; g l1_health_1=l.health_1
+mi xeq: sort h_2022 wave; g d_health_1=d.health_1
+mi xeq: sort h_2022 wave; g l1_edu_h_1=l.edu_h_1
+mi xeq: sort h_2022 wave; g l1_edu_m_1=l.edu_m_1
+mi xeq: sort h_2022 wave; g l1_job_h_1=l.job_h_1
+mi xeq: sort h_2022 wave; g l1_gender=l.gender
+mi xeq: sort h_2022 wave; g l1_pareja=l.pareja
+mi xeq: sort h_2022 wave; g l1_sector=l.sector
+mi xeq: sort h_2022 wave; g l1_contract=l.contract
+
+global baseline_controls d_size l1_size d_members_working l1_members_working d_kids l1_kids i.l1_gage i.l1_employment l1_health_1 d_health_1 l1_edu_h_1 l1_edu_m_1 l1_job_h_1 i.durable i.l1_durable l1_pareja l1_gender i.income_dev i.l1_income_dev i.risk i.l1_risk i.gen_constraints i.l1_gen_constraints i.income_expect i.l1_income_expect i.l1_contract i.l1_sector years_house
+
+mi xeq: sort h_2022 wave; g dwy=d.wy
+mi xeq: sort h_2022 wave; g dcy=d.cy
+* niveles t-1 y t-2 de deuda total y share
+mi xeq: sort h_2022 wave; g l1_debty   =l.debty
+mi xeq: sort h_2022 wave; g l2_debty   =l2.debty
+mi xeq: sort h_2022 wave; g l1_share_il=l.share_il
+mi xeq: sort h_2022 wave; g l2_share_il=l2.share_il
+
+forvalues i=1/5{
+foreach j in 2017 2020 2022 {
+capture xtile qui_wealth_`i'_`j'=`v_riquezanet' if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_wealth=.
+forvalues i=1/5{
+foreach j in 2017 2020 2022 {
+capture replace qui_wealth=qui_wealth_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+forvalues i=1/5{
+foreach j in 2017 2020 2022 {
+capture xtile qui_income_`i'_`j'=renthog_real if imputation==`i' & year==`j' , nq(10)
+    }
+}
+g qui_income=.
+forvalues i=1/5{
+foreach j in 2017 2020 2022 {
+capture replace qui_income=qui_income_`i'_`j' if imputation==`i' & year==`j'
+}
+}
+mi xeq: sort h_2022 wave; g l1_qui_wealth=l.qui_wealth
+mi xeq: sort h_2022 wave; g l1_qui_income=l.qui_income
+
+winsor2 l1_debty l2_debty, cuts(0 99) by(imputation year)
+winsor2 dcy dwy , cuts(1 99) by(imputation year)
+
+* ----- construccion de los terminos endogenos e instrumentos -----
+* (a) nivel de deuda total: endogeno l1_debty_w, instrumento l2_debty_w
+* (b) Shock x Debt: endogeno; instrumento Shock x Debt_{t-2}
+mi passive: g shock_l1debty = shock * l1_debty_w
+mi passive: g shock_l2debty = shock * l2_debty_w
+* (c) TRIPLE Shock x Debt x share^ill: endogeno; instrumento con share y debt en t-2
+mi passive: g shock_l1debty_sh = shock * l1_debty_w * l1_share_il
+mi passive: g shock_l2debty_sh = shock * l2_debty_w * l2_share_il
+* control: share iliquido rezagado en niveles (exogeno, para no omitir su efecto directo)
+* (l1_share_il ya creado)
+
+* instrumentos (3): nivel, interaccion doble, interaccion triple
+local Z l2_debty_w shock_l2debty shock_l2debty_sh
+
+sort h_2022 wave
+* primeras etapas (una por endogeno)
+mi estimate, cmdok vceok esampvaryok post: svy: reg l1_debty_w dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2022 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_lvl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2022 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_dbl = r(F)
+mi estimate, cmdok vceok esampvaryok post: svy: reg shock_l1debty_sh dwy_w shock l1_share_il `Z' $baseline_controls i.l1_qui_wealth i.l1_qui_income if year==2022 & ownership==2 & l1_ownership==2
+mi test `Z'
+scalar F_trp = r(F)
+
+* IV: nivel, doble y triple endogenos; share^ill nivel como control exogeno
+mi estimate, cmdok vceok esampvaryok post: svy: ivregress 2sls dcy_w dwy_w shock l1_share_il ///
+   $baseline_controls i.l1_qui_wealth i.l1_qui_income ///
+   (l1_debty_w shock_l1debty shock_l1debty_sh = l2_debty_w shock_l2debty shock_l2debty_sh) ///
+   if year==2022 & ownership==2 & l1_ownership==2
+estimate store m_2022
+estadd scalar F_lvl
+estadd scalar F_dbl
+estadd scalar F_trp
+
+*****************************************************************************************************************************
+* IMPRESION
+*****************************************************************************************************************************
+estout m_* using "$tables/Tab_triple_share.txt", cells(b(fmt(%9.3f))se(par star fmt(3))) ///
+stats(N F_lvl F_dbl F_trp, fmt(%9.0f %9.3f %9.3f %9.3f) ///
+      labels("Observations" "F-stat (Debt/Y)" "F-stat (Shock x Debt)" "F-stat (Shock x Debt x share)")) ///
+starlevels(* 0.1 ** 0.05 *** 0.01) ///
+varlabels(dwy_w "$\Delta{\frac{W_t}{Y_t}}$" shock "Unemployment Shock" ///
+   l1_share_il "Illiquid share $s^{ill}_{t-1}$" ///
+   l1_debty_w "$\frac{Debt_{t-1}}{Y_{t-1}}$" ///
+   shock_l1debty "Shock $\times \frac{Debt_{t-1}}{Y_{t-1}}$" ///
+   shock_l1debty_sh "Shock $\times \frac{Debt_{t-1}}{Y_{t-1}} \times s^{ill}_{t-1}$") ///
+keep(dwy_w shock l1_share_il l1_debty_w shock_l1debty shock_l1debty_sh) ///
+order(dwy_w shock l1_debty_w shock_l1debty shock_l1debty_sh l1_share_il) ///
+indicate("Wealth FE=*.l1_qui_wealth" "Income FE=*.l1_qui_income" "Controls=l1_size") ///
+replace msign(-) style(tex) modelwidth(8) varwidth(34)
+
+di as result "Hecho. El coeficiente clave es Shock x Debt x share (b4). Revisar F_trp por panel."
